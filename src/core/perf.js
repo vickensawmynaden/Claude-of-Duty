@@ -67,13 +67,21 @@ export class PerfGovernor {
     this.medianMs = 0;
 
     this.hud = show ? this._makeHud() : null;
+    this._resumed = false;
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) this._resumed = true;
+    });
   }
 
   /** Called once per rendered frame with the real (unclamped) frame time in seconds. */
   sample(frameS) {
     if (document.hidden || frameS <= 0) return;
-    // A gap this long is a backgrounded tab or a debugger, not a frame rate.
-    if (frameS > 2) return;
+    // The first frame after the tab comes back spans the whole time it was
+    // hidden; that is not a frame rate.
+    if (this._resumed) {
+      this._resumed = false;
+      return;
+    }
     this.sinceStart += frameS;
     if (this.sinceStart < WARMUP_S) return;
     this.sinceChange += frameS;
