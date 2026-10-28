@@ -1,5 +1,8 @@
+import { TouchControls, isTouchDevice } from './touch.js';
+
 /**
- * Input aggregation: keyboard, mouse (pointer-locked), and gamepad, exposed as
+ * Input aggregation: keyboard, mouse (pointer-locked), gamepad and on-screen
+ * touch controls, exposed as
  * a stable per-frame snapshot so gameplay never touches raw DOM events.
  *
  * Edge queries (`pressed`, `released`) are valid only during the frame in which
@@ -50,6 +53,9 @@ export class Input {
 
     this.gamepadIndex = null;
     this.stick = { moveX: 0, moveY: 0, lookX: 0, lookY: 0 };
+    /** On-screen joystick, written by TouchControls; merged into `stick` each frame. */
+    this.touchStick = { x: 0, y: 0 };
+    this.touch = isTouchDevice() ? new TouchControls(this) : null;
 
     this._bound = {
       keydown: this._onKeyDown.bind(this),
@@ -74,9 +80,11 @@ export class Input {
     addEventListener('blur', this._bound.blur);
     document.addEventListener('pointerlockchange', this._bound.lockchange);
     this.canvas.addEventListener('contextmenu', this._bound.contextmenu);
+    this.touch?.attach();
   }
 
   detach() {
+    this.touch?.detach();
     removeEventListener('keydown', this._bound.keydown);
     removeEventListener('keyup', this._bound.keyup);
     removeEventListener('mousedown', this._bound.mousedown);
@@ -147,6 +155,7 @@ export class Input {
     for (const code of this.down) this._pendingUp.add(code);
     this._rawLook.x = 0;
     this._rawLook.y = 0;
+    this.touch?.reset();
   }
 
   beginFrame() {
@@ -175,6 +184,10 @@ export class Input {
     this._pendingWheel = 0;
 
     this._pollGamepad();
+    // Same convention as a gamepad's left stick: +y is pulled back. Pushing it
+    // to the rim therefore trips the movement code's stick-sprint threshold.
+    this.stick.moveX += this.touchStick.x;
+    this.stick.moveY += this.touchStick.y;
   }
 
   endFrame() {}
