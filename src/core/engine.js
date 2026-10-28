@@ -119,7 +119,8 @@ export class Engine {
   step(now = performance.now()) {
     const t = this.time;
     // Clamp so a tab-switch or a breakpoint doesn't teleport the simulation.
-    const rawDt = Math.min(0.1, Math.max(0, (now - this._last) / 1000));
+    const frameS = Math.max(0, (now - this._last) / 1000);
+    const rawDt = Math.min(0.1, frameS);
     this._last = now;
     t.raw += rawDt;
     t.dt = rawDt * t.scale;
@@ -145,7 +146,10 @@ export class Engine {
     const renderSystem = this.registry.peek('render');
     if (typeof renderSystem?.render === 'function') renderSystem.render(this.ctx);
 
-    this.perf?.sample(rawDt);
+    // The governor needs the real frame time: below 10 fps every frame hits
+    // the simulation clamp above, which would hide exactly the devices that
+    // need help most.
+    this.perf?.sample(frameS);
     this.input.endFrame();
   }
 

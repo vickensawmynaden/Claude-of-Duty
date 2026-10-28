@@ -69,24 +69,25 @@ export class PerfGovernor {
     this.hud = show ? this._makeHud() : null;
   }
 
-  /** Called once per rendered frame with the unscaled frame delta in seconds. */
-  sample(rawDt) {
-    if (document.hidden || rawDt <= 0) return;
-    this.sinceStart += rawDt;
+  /** Called once per rendered frame with the real (unclamped) frame time in seconds. */
+  sample(frameS) {
+    if (document.hidden || frameS <= 0) return;
+    // A gap this long is a backgrounded tab or a debugger, not a frame rate.
+    if (frameS > 2) return;
+    this.sinceStart += frameS;
     if (this.sinceStart < WARMUP_S) return;
-    this.sinceChange += rawDt;
-    this.windowT += rawDt;
-    // Anything at the engine's 100 ms clamp is a stall, not a frame rate.
-    if (rawDt < 0.099) this.samples.push(rawDt * 1000);
-    if (this.windowT < WINDOW_S) return;
+    this.sinceChange += frameS;
+    this.windowT += frameS;
+    // One-off stalls (shader compile, GC) are rejected by the median below.
+    this.samples.push(frameS * 1000);
+    // Close the window on time, but insist on a few frames so the median
+    // means something even when the device manages only a handful per second.
+    if (this.windowT < WINDOW_S || this.samples.length < 3) return;
 
     this.windowT = 0;
-    if (this.samples.length < 5) {
-      this.samples.length = 0;
-      return;
-    }
     this.samples.sort((a, b) => a - b);
     const ms = this.samples[this.samples.length >> 1];
+    this.lastWindowS = this.samples.reduce((a, b) => a + b, 0) / 1000;
     this.samples.length = 0;
     this.medianMs = ms;
     this._adjustScale(ms);
@@ -129,11 +130,12 @@ export class PerfGovernor {
     const t = this.targetMs;
     const cur = PRESET_ORDER.indexOf(this.config.quality);
 
-    if (this.scale <= MIN_SCALE && ms > t * 1.15) this.strugglingT += WINDOW_S;
-    else this.strugglingT = Math.max(0, this.strugglingT - WINDOW_S * 0.5);
+    const w = this.lastWindowS;
+    if (this.scale <= MIN_SCALE && ms > t * 1.15) this.strugglingT += w;
+    else this.strugglingT = Math.max(0, this.strugglingT - w * 0.5);
 
-    if (this.scale >= this.maxScale && ms < t * 0.6) this.headroomT += WINDOW_S;
-    else this.headroomT = Math.max(0, this.headroomT - WINDOW_S);
+    if (this.scale >= this.maxScale && ms < t * 0.6) this.headroomT += w;
+    else this.headroomT = Math.max(0, this.headroomT - w);
 
     if (this.strugglingT >= 8 && cur > 0) {
       this._suggest(PRESET_ORDER[cur - 1], 'Running slow');
