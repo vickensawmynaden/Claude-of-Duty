@@ -145,6 +145,7 @@ export class Engine {
     const renderSystem = this.registry.peek('render');
     if (typeof renderSystem?.render === 'function') renderSystem.render(this.ctx);
 
+    this.perf?.sample(rawDt);
     this.input.endFrame();
   }
 

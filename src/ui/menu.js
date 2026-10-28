@@ -133,6 +133,7 @@ export class PauseMenu {
   }
 
   setQuality(name) {
+    if (name === this.ctx.config.quality) return;
     try {
       this.ctx.config.setQuality(name);
       this.ctx.events.emit('ui:quality', { quality: name });
@@ -140,6 +141,17 @@ export class PauseMenu {
       console.warn('[ui] quality switch failed', err);
     }
     this.syncFromConfig();
+    // The render pass chain (GTAO, SSR, TAA, shadows) is built once at boot,
+    // so a preset change only really takes effect on a fresh load. Remember
+    // the pick (it overrides auto-detection from now on) and reload into it.
+    try {
+      localStorage.setItem('ow.quality.manual', name);
+    } catch {
+      /* private mode: the URL parameter below still carries it */
+    }
+    const u = new URL(location.href);
+    u.searchParams.set('q', name);
+    location.replace(u.href);
   }
 
   syncFromConfig() {

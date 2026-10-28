@@ -15,6 +15,7 @@ import { AudioSystem } from './audio/index.js';
 
 import { installShotApi } from './dev/shots.js';
 import { prewarm } from './core/prewarm.js';
+import { PerfGovernor, storedAutoQuality, PRESET_ORDER } from './core/perf.js';
 
 const params = new URLSearchParams(location.search);
 const capture = params.get('capture') === '1';
@@ -45,8 +46,20 @@ function autoQuality() {
   }
 }
 
+// Precedence: ?q= in the URL, then a preset the player picked in the menu,
+// then one the performance governor learned on an earlier visit, then a guess
+// from the GPU name.
+function storedManualQuality() {
+  try {
+    const q = localStorage.getItem('ow.quality.manual');
+    return PRESET_ORDER.includes(q) ? q : null;
+  } catch {
+    return null;
+  }
+}
+const manualQuality = storedManualQuality();
 const config = createConfig({
-  quality: params.get('q') ?? (capture ? 'ultra' : autoQuality()),
+  quality: params.get('q') ?? (capture ? 'ultra' : manualQuality ?? storedAutoQuality() ?? autoQuality()),
   deterministic: capture,
 });
 
@@ -147,6 +160,17 @@ await paint();
 const warmup = params.get('prewarm') === '0' ? { ok: false, reason: 'disabled by ?prewarm=0' } : await prewarm(engine);
 console.info('[boot] prewarm', warmup);
 window.__PREWARM__ = warmup;
+
+// Live dynamic resolution + preset learning. Off for the capture harness,
+// whose pixel gate needs a fixed render size; `?perf=1` shows the readout.
+if (!capture && params.get('adapt') !== '0') {
+  engine.perf = new PerfGovernor(engine, {
+    mobile: /android|iphone|ipad|mobile/i.test(navigator.userAgent),
+    learn: !params.get('q') && !manualQuality,
+    show: params.get('perf') === '1',
+  });
+  window.__PERF__ = engine.perf;
+}
 
 engine.start();
 
