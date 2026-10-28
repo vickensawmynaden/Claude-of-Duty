@@ -107,8 +107,11 @@ void main() {
   float ev100 = log2( lum * 100.0 / 12.5 ) + uParams.w;
   ev100 = clamp( ev100, uLimits.x, uLimits.y );
 
+  // A single NaN/Inf from any HDR pass would otherwise poison the adapted EV
+  // forever (it feeds back through tPrev) and the whole frame stays black.
+  if ( !( ev100 == ev100 ) ) ev100 = 0.5 * ( uLimits.x + uLimits.y );
   float prevEv = texture2D( tPrev, vec2( 0.5 ) ).g;
-  if ( uLimits.z > 0.5 ) prevEv = ev100;
+  if ( uLimits.z > 0.5 || !( prevEv == prevEv ) || abs( prevEv ) > 1e4 ) prevEv = ev100;
 
   float speed = ev100 > prevEv ? uParams.z : uParams.y;
   float k = 1.0 - exp( -uParams.x * speed );
